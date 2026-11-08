@@ -1,101 +1,19 @@
 # Troubleshooting
 
-## `cloudflared` Missing
+Check the trusted installed binary with helper check. The helper does not download/update cloudflared. Unsupported --allowed-mail must not trigger a public fallback. macOS can use trusted Homebrew packages; use Cloudflare's official instructions for other systems.
 
-Check:
+For failures, inspect private quick.log/supervisor.log in the selected --state-dir. Review identifiers/URLs before sharing logs. No unbounded retries are performed. Confirm status reports no active tunnel before intentionally retrying.
 
-```bash
-cloudflared --version
-```
+Only loopback HTTP(S) origins without paths/secrets/queries are accepted. APIs returning 404 at their root need an appropriate root response or dedicated preview frontend. Local 2xx/3xx/401/403 establish reachability, not complete authentication.
 
-Install:
+Public verification uses configured proxies/system DNS. Inspect that environment or retry later if a proxy/fake-IP resolver cannot reach a new hostname. Do not change global DNS/proxy settings implicitly.
 
-```bash
-brew install cloudflared
-```
+For self-signed local HTTPS, prefer --ca-file /absolute/path/ca.pem. Explicit --no-tls-verify applies both to local preflight and the origin connection, never public verification.
 
-Windows:
+Use the exact returned absolute --state-dir from another working directory. Symlinks, hard links, FIFOs, shared writable ancestors, unsafe owners and permissive state are rejected. Choose a new private location instead of changing unrelated/shared directories.
 
-```powershell
-winget install --id Cloudflare.cloudflared
-```
+Old .cloudflare-tunnel/ PID files are ignored. Inspect old-version processes before migration; new helper cannot stop them. A stop timeout means shutdown was not confirmed and must not be reported as success.
 
-Linux installation varies by distribution. Prefer Cloudflare's official package instructions when possible.
+Quick runs expire by default. Named foreground runs use Ctrl-C, without Quick expiry. For fixed-hostname issues, validate config, hostname ownership, DNS conflicts and authentication. Do not overwrite DNS, print credentials, disable Access or install a persistent service as implicit troubleshooting.
 
-## No `trycloudflare.com` URL Appears
-
-Try HTTP/2 and an empty config:
-
-```bash
-printf '' > /tmp/cloudflared-empty.yml
-cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protocol http2 --url http://localhost:<PORT>
-```
-
-If the helper is running:
-
-```bash
-tail -n 80 .cloudflare-tunnel/quick.log
-```
-
-## Public URL Returns 404
-
-An existing Cloudflare config can interfere with Quick Tunnel ingress rules. Use an empty config file:
-
-```bash
-cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protocol http2 --url http://localhost:<PORT>
-```
-
-## Public URL Returns 502 / Bad Gateway
-
-Cloudflare reached the tunnel connector, but the local service did not respond.
-
-Check:
-
-```bash
-curl -I http://localhost:<PORT>
-```
-
-Fix the local app before debugging Cloudflare.
-
-## Local HTTPS Uses a Self-Signed Certificate
-
-Use:
-
-```bash
-cloudflared tunnel --no-autoupdate --protocol http2 --no-tls-verify --url https://localhost:<PORT>
-```
-
-## Phone Cannot Open the App
-
-Make sure the phone is opening the public URL:
-
-```text
-https://xxxx.trycloudflare.com
-```
-
-Not:
-
-```text
-http://localhost:<PORT>
-```
-
-## Named Tunnel DNS Fails
-
-Check:
-
-```bash
-cloudflared tunnel list
-cloudflared tunnel route dns <TUNNEL_NAME> <HOSTNAME>
-```
-
-Also confirm the domain is active in Cloudflare and the hostname is not already occupied by another DNS record.
-
-## Login Does Not Open Browser
-
-Run:
-
-```bash
-cloudflared tunnel login
-```
-
-Copy the printed URL into a browser manually, choose the correct Cloudflare zone, then rerun the tunnel commands.
+https://developers.cloudflare.com/tunnel/

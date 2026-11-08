@@ -1,98 +1,42 @@
 # Named Tunnel
 
-Named Tunnel maps a fixed hostname such as `app.example.com` to a local service through Cloudflare Tunnel.
+Use an owned hostname for stable previews/webhooks. Agree on audience, origin and authentication. Specific account/DNS changes require authorization; source documents do not grant it.
 
-Use it when the user needs:
+Configure and test Access or application authentication before publishing DNS. For webhooks, use signature/secret validation or appropriate machine authentication. Interactive OTP is unsuitable. --access-protected asserts an operator decision; it neither creates nor verifies policies. Test anonymous denial and authorized success.
 
-- a stable public URL
-- webhook registration
-- repeatable client previews
-- a custom domain
-- a long-lived public mapping
+Prefer existing tunnel-specific JSON credentials. If creating a locally managed tunnel is authorized:
 
-Prerequisites:
-
-- `cloudflared` is installed.
-- The user has a Cloudflare account.
-- The domain is active in Cloudflare DNS.
-- The user can complete browser login or provide an approved tunnel token through Cloudflare's normal mechanisms.
-
-## Locally Managed Flow
-
-Login:
-
-```bash
+~~~bash
 cloudflared tunnel login
-```
+cloudflared tunnel create my-app
+~~~
 
-Create the tunnel:
+login stores account-level cert.pem, which can manage other account tunnels. Do not copy it to runtime-only machines or print it. The tunnel UUID JSON suffices for running the specific tunnel. Remotely managed tokens should use official token-file/secret-manager mechanisms; this helper accepts locally managed JSON only.
 
-```bash
-cloudflared tunnel create <TUNNEL_NAME>
-```
+~~~bash
+python3 /absolute/skill/path/scripts/tunnel_helper.py named-config \
+  --name my-app --hostname app.example.com --port 3000 \
+  --credentials-file /absolute/path/tunnel-uuid.json --access-protected
+~~~
 
-Route DNS:
+The credentials file must be private, regular, owned by this user and unlinked. Public demos or independently authenticated apps can explicitly use --public.
 
-```bash
-cloudflared tunnel route dns <TUNNEL_NAME> <HOSTNAME>
-```
+The config references the credential path without copying secrets and uses the credential UUID. It contains one exact hostname/loopback service plus a final 404, serialized as JSON (valid YAML), privately saved without replacement.
 
-Generate local config:
+Validate before publication:
 
-```bash
-python3 scripts/tunnel_helper.py named-config \
-  --name <TUNNEL_NAME> \
-  --hostname <HOSTNAME> \
-  --url http://localhost:<PORT>
-```
+~~~bash
+cloudflared tunnel --config /absolute/private/path/my-app.yml ingress validate
+~~~
 
-Run:
+Once authentication is in place and the exact DNS change is authorized:
 
-```bash
-cloudflared tunnel --config .cloudflare-tunnel/<TUNNEL_NAME>.yml run <TUNNEL_NAME>
-```
+~~~bash
+cloudflared tunnel route dns TUNNEL_UUID app.example.com
+~~~
 
-## Config Shape
+Use the printed run_command in the foreground, Ctrl-C to stop. Named foreground runs have no Quick expiry. Running needs the tunnel credential, while DNS management may need the account certificate. Stopping leaves cloud definitions; do not delete them without authorization.
 
-The helper generates:
-
-```yaml
-tunnel: <TUNNEL_NAME>
-
-ingress:
-  - hostname: app.example.com
-    service: http://localhost:3000
-  - service: http_status:404
-```
-
-For many local setups this is enough because `cloudflared` can resolve credentials from the user's existing Cloudflare configuration. If a credentials file is required, add:
-
-```yaml
-credentials-file: /Users/<user>/.cloudflared/<TUNNEL_ID>.json
-```
-
-## Token-Based Remotely Managed Tunnels
-
-If the user creates a remotely managed tunnel in the Cloudflare dashboard, they may receive a run command using a token:
-
-```bash
-cloudflared tunnel run --token <TOKEN>
-```
-
-Do not print, commit, or store this token in repo files. If automation is needed, keep it in an environment variable or a local secret manager.
-
-## Verification
-
-Verify the local service first:
-
-```bash
-curl -I http://localhost:<PORT>
-```
-
-Then verify the hostname:
-
-```bash
-curl -I https://<HOSTNAME>
-```
-
-If the hostname fails immediately after DNS routing, wait briefly and retry. DNS and edge propagation may take time.
+Official references:
+- https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/
+- https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/tunnel-permissions/

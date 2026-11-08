@@ -1,105 +1,53 @@
-# Cloudflare Tunnel Skill
+# Cloudflare Tunnel Skill — Hardened Fork
 
-An agent workflow skill for exposing local HTTP/HTTPS services through Cloudflare Tunnel.
+Hardened baobalas fork of upstream 1f4eebaaf3baa5e1d9fb41f38cf74348f03f0ec9, MIT license retained.
 
-It supports two modes:
+[中文 / pinned installation instructions](README.md) · [Design and verification](docs/HARDENING.md)
 
-- **Quick Tunnel**: temporary `https://*.trycloudflare.com` preview URLs for demos and short-lived sharing.
-- **Named Tunnel**: fixed custom hostnames such as `app.example.com -> http://localhost:3000`.
+Python 3.10+, trusted cloudflared, macOS/Linux/WSL. Native Windows process management is unsupported.
 
-## Use Cases
+## Install and use
 
-- Share `localhost:3000` with someone else.
-- Create a temporary public URL for a local API.
-- Map a fixed domain to a local development service.
-- Provide webhook endpoints for GitHub, Slack, Stripe, n8n, and similar tools.
-- Let an agent check the local service, start a tunnel, extract the public URL, and verify it.
+Review a full commit SHA, clone into a unique temporary directory, check out that exact commit and run scripts/install_skill.py with --expected-commit and --destination. See the fail-fast installation block in README.md. The installer reads only pinned regular Git blobs, includes agents/scripts/references, records SHA-256 hashes and refuses existing destinations. It never starts a tunnel. Use a new destination for upgrades.
 
-## Avoid For
+~~~bash
+python3 scripts/tunnel_helper.py check
+python3 scripts/tunnel_helper.py quick \
+  --url http://127.0.0.1:3000 \
+  --allowed-mail viewer@example.com --duration 900
+~~~
 
-- Sensitive admin panels without authentication.
-- Raw databases, Redis, Docker API, or private network services.
-- Public file hosting or large downloads.
-- Production services that cannot tolerate local machine sleep, process exits, or network loss.
+Use actual authorized visitor emails. Unsupported email authentication fails closed. Never silently fall back to public exposure. OTP requires a visitor browser and cannot protect machine-to-machine webhooks. For an explicitly authorized non-sensitive public demo, replace the email option with --public; that flag adds no authentication.
 
-## Install
+Only loopback HTTP(S) origins are accepted, without credentials, queries or paths. Publishing an origin may expose all its routes. localhost becomes 127.0.0.1; use [::1] for IPv6-only listeners. For self-signed loopback HTTPS, explicitly use --ca-file (preferred) or --no-tls-verify.
 
-> Claude Code only discovers skills laid out as `.claude/skills/<name>/SKILL.md` (a directory containing `SKILL.md`), and the helper script must be installed alongside it — always copy `SKILL.md` + `scripts/` + `references/` together.
+Default lifetime: 900 seconds from launch, maximum 86400. --timeout controls startup only. The supervisor handles expiry, startup failure, ordinary termination and stop requests. A 1 MiB log limit also stops the child. Concurrent starts are refused. Saved PIDs are never signalled.
 
-Claude Code global install (recommended, available in all projects):
+Use returned absolute status/stop commands with --state-dir from other working directories. verify defaults to 2xx, follows no redirects, and supports --contains / explicit --expect-status. Restricted apps require anonymous-denial and authorized-success tests.
 
-```bash
-git clone https://github.com/xiaoyuboi/cloudflare-tunnel-skill /tmp/cloudflare-tunnel-skill
-mkdir -p ~/.claude/skills/cloudflare-tunnel
-cp /tmp/cloudflare-tunnel-skill/SKILL.md ~/.claude/skills/cloudflare-tunnel/
-cp -R /tmp/cloudflare-tunnel-skill/scripts /tmp/cloudflare-tunnel-skill/references ~/.claude/skills/cloudflare-tunnel/
-rm -rf /tmp/cloudflare-tunnel-skill
-```
+## Fixed hostnames
 
-Claude Code project-level install (current project only): same as above, but copy into `.claude/skills/cloudflare-tunnel/` inside the project.
+Configure Access or application authentication before DNS publication.
 
-Codex install: same as above, but copy into `~/.codex/skills/cloudflare-tunnel/`.
+~~~bash
+python3 scripts/tunnel_helper.py named-config \
+  --name my-app --hostname app.example.com --port 3000 \
+  --credentials-file /absolute/path/tunnel-uuid.json --access-protected
+~~~
 
-> Requirements: `cloudflared` (see `references/troubleshooting.md` for install commands) and Python 3. The helper script is fully tested on macOS / Linux; Windows support is best-effort (process management uses `tasklist`/`taskkill`) — prefer WSL or the manual fallback commands on Windows.
+This only generates config. The Access flag is an operator assertion, not verification. --public explicitly allows public demos or independently authenticated apps. Credentials must be private unlinked user-owned tunnel JSON, not account cert.pem. Secrets are not copied; the config references the path and TunnelID. Serialized JSON is a YAML subset, with one origin rule and a final 404, saved privately without replacement.
 
-## Quick Tunnel
+Run the printed command in the foreground; Ctrl-C stops it. Named foreground runs do not use Quick expiry. See references/named-tunnel.md.
 
-```bash
-python3 scripts/tunnel_helper.py quick --url http://localhost:3000
-```
+## State and tests
 
-Status:
+Private per-project state lives outside repositories under XDG_STATE_HOME or ~/.local/state. Directories are 0700 and files 0600. Unsafe links, special files, owners and shared writable ancestors are rejected. Legacy PID files are ignored; inspect/stop old-version processes before migration. Forced SIGKILL of a supervisor can prevent cleanup and requires manual inspection.
 
-```bash
-python3 scripts/tunnel_helper.py status
-```
+Public verification respects proxies/system DNS and retains TLS checks; no automatic DoH is used. Loopback checks bypass proxies. Child environments exclude inherited tunnel credentials/settings.
 
-Stop:
-
-```bash
-python3 scripts/tunnel_helper.py stop
-```
-
-Manual fallback:
-
-```bash
-printf '' > /tmp/cloudflared-empty.yml
-cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protocol http2 --url http://localhost:3000
-```
-
-## Named Tunnel
-
-Prerequisites:
-
-- `cloudflared` is installed.
-- You have a Cloudflare account.
-- The domain is managed by Cloudflare DNS.
-
-Flow:
-
-```bash
-cloudflared tunnel login
-cloudflared tunnel create my-app
-cloudflared tunnel route dns my-app app.example.com
-python3 scripts/tunnel_helper.py named-config --name my-app --hostname app.example.com --url http://localhost:3000
-cloudflared tunnel --config .cloudflare-tunnel/my-app.yml run my-app
-```
-
-## Test
-
-```bash
-python3 -m py_compile scripts/tunnel_helper.py scripts/test_quick_tunnel.py
-python3 scripts/tunnel_helper.py --help
-```
-
-End-to-end Quick Tunnel test:
-
-```bash
+~~~bash
+python3 -m unittest discover -s tests -v
 python3 scripts/test_quick_tunnel.py
-```
+~~~
 
-## Security
-
-Cloudflare Tunnel exposes your local service to the public internet. Before sharing a URL, make sure it does not expose tokens, cookies, API keys, private data, internal systems, unauthenticated admin panels, or unsafe write APIs.
-
-Use application authentication or Cloudflare Access for sensitive services.
+Default tests are offline. --live --cloudflared /trusted/path/cloudflared explicitly publishes only a disposable synthetic page, with expiry and cleanup. Offline tests do not establish real OTP, Access or business authentication. Quick Tunnels are testing-only, with uptime/concurrency/SSE limitations.

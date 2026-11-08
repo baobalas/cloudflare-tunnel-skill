@@ -1,31 +1,17 @@
 # Security
 
-Cloudflare Tunnel exposes a local service to the public internet. Treat the public URL as reachable by anyone who obtains it unless Cloudflare Access or application authentication is configured.
+Encryption and random hostnames do not authenticate visitors. Identify the authorized origin, audience and duration. An explicitly public non-sensitive demo permits --public; otherwise use specific allowed emails or existing app/Access authentication. Clarify missing decisions instead of choosing public access.
 
-## Ask Before Exposing
+Sensitive cases include admin/debug consoles, private company tools/files, credentials/session data, unauthenticated writes, Docker APIs, AI endpoints and database consoles. Require effective authentication before publishing and inspect relevant routes. Never expose raw management/data services as a troubleshooting shortcut.
 
-Pause and confirm with the user before exposing:
+The helper enforces loopback HTTP(S) and an explicit exposure choice, but cannot discover every sensitive route or prove an Access assertion. Verify anonymous rejection and authorized success. A 200 login page, redirect or isolated 401 is insufficient.
 
-- admin dashboards
-- database consoles
-- Docker daemon APIs
-- Redis, Postgres, MySQL, Elasticsearch, or similar data services
-- internal company tools
-- apps containing API keys, cookies, bearer tokens, session dumps, or private files
-- unauthenticated write APIs
-- local development apps with debug consoles enabled
+Keep tokens/certificates out of chat/repositories. named-config reads only its explicitly supplied tunnel JSON, extracts TunnelID and references its private path; it never emits the secret. URL credentials/query strings are rejected. Runtime-only machines should not need account cert.pem.
 
-## Safer Defaults
+State is private and outside repositories, with link/special-file checks and atomic writes. Stop requests identify the active supervisor run, never a saved PID. Same-user malicious processes and privileged attackers are outside this protection boundary.
 
-- Prefer quick mode only for short-lived demos.
-- Prefer named mode plus Cloudflare Access for stable internal tools.
-- Do not expose raw databases or private network services.
-- Do not commit generated Cloudflare credentials or tunnel tokens.
-- Stop quick tunnels after the demo.
-- Verify what the public URL returns before sharing it.
+Quick supervision bounds normal lifetime and cleans up startup failures and ordinary termination. SIGKILL of the supervisor can prevent cleanup; manually inspect the specific remaining process if this occurs. Never guess termination targets from stale PID files.
 
-## Cloudflare Access
+Keep TLS verification enabled; prefer a trusted CA. The explicit self-signed override only applies to loopback. Public verification respects proxy/system DNS policy and does not automatically contact DoH.
 
-If the user wants to expose a sensitive app with a stable hostname, recommend protecting it with Cloudflare Access or application-level authentication before sharing the URL.
-
-This skill can help create the tunnel, but it should not silently publish a sensitive service without an access control decision.
+Default tests do not publish. The explicit live test exposes only a disposable synthetic page with expiry and cleanup. Reachability tests do not establish OTP, Access, webhook signatures or production suitability.

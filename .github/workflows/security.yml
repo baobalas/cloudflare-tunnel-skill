@@ -1,0 +1,23 @@
+name: Offline security regression
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  security:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ['3.10', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests -v
+      - run: python -m py_compile scripts/tunnel_helper.py scripts/install_skill.py scripts/test_quick_tunnel.py

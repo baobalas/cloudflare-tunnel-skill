@@ -1,88 +1,23 @@
 # Quick Tunnel
 
-Quick Tunnel creates a temporary public URL under `trycloudflare.com` for a local HTTP/HTTPS service.
+Use for an authorized short-lived demo, not production, stable callbacks, large downloads or SSE.
 
-Use it for:
+~~~bash
+python3 /absolute/skill/path/scripts/tunnel_helper.py quick \
+  --url http://127.0.0.1:3000 --allowed-mail viewer@example.com --duration 900
+~~~
 
-- local app previews
-- demos and classroom sharing
-- short-lived client review
-- testing webhooks when a stable domain is not required
+Repeat --allowed-mail for specific authorized visitors. Wildcard audiences are rejected. The installed binary must advertise --allowed-mail; otherwise creation stops before launch. Never silently remove authentication. Email OTP needs an interactive browser and is unsuitable for webhooks.
 
-Avoid it for:
+For an already-authorized non-sensitive public demo, replace email access with --public. This adds no application authentication. Sensitive apps need effective protection first.
 
-- production traffic
-- fixed callback URLs
-- large file distribution
-- services that require guaranteed uptime
-- streaming features that depend on Server-Sent Events (SSE)
+Only loopback HTTP(S) origins are allowed, without paths, query strings, fragments or userinfo. Publishing an origin may expose all routes. localhost becomes 127.0.0.1; use [::1] for IPv6-only listeners.
 
-## Recommended Flow
+Default maximum lifetime is 900 seconds from launch; --duration accepts 1–86400. --timeout is startup-only. Startup failure, ordinary termination, stop requests, expiry or a 1 MiB log limit clean up the real child. There is no silent retry or replacement of an active tunnel.
 
-1. Find the local service URL.
-2. Verify it locally.
-3. Start the tunnel with HTTP/2 and an empty config.
-4. Wait for the public URL and registered edge connection.
-5. Verify the public URL.
-6. Tell the user it is temporary.
+Use the exact returned status_command / stop_command, including absolute --state-dir, from any working directory. Unsafe state fails closed. No manual background fallback is provided because it would bypass lifecycle protections.
 
-## Helper Command
+For public demos, verify with --contains and recognizable content. Restricted apps need anonymous rejection and authorized success. A redirect/HTTP status cannot prove OTP works. Public verification preserves proxy/system DNS policy and TLS checking.
 
-```bash
-python3 scripts/tunnel_helper.py quick --url http://localhost:<PORT>
-```
-
-Useful options:
-
-```bash
-python3 scripts/tunnel_helper.py quick --port 3000
-python3 scripts/tunnel_helper.py quick --url https://localhost:8443 --no-tls-verify
-python3 scripts/tunnel_helper.py status
-python3 scripts/tunnel_helper.py stop
-```
-
-The helper writes runtime files to `.cloudflare-tunnel/` in the current working directory (run `status` and `stop` from the same directory):
-
-- `quick.pid`
-- `quick.log`
-- `quick-url.txt`
-- `quick-local-url.txt`
-- `cloudflared-empty.yml`
-
-Reuse and retry behavior:
-
-- Re-running `quick` with the same local URL reuses the running tunnel; a different local URL stops the old tunnel and starts a new one.
-- Transient `api.trycloudflare.com` failures are retried up to 3 times automatically.
-
-## Manual Command
-
-```bash
-printf '' > /tmp/cloudflared-empty.yml
-cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protocol http2 --url http://localhost:<PORT>
-```
-
-For self-signed local HTTPS:
-
-```bash
-cloudflared --config /tmp/cloudflared-empty.yml tunnel --no-autoupdate --protocol http2 --no-tls-verify --url https://localhost:8443
-```
-
-## Verification
-
-```bash
-curl --noproxy '*' -sS -L --max-time 20 https://xxxx.trycloudflare.com
-```
-
-The body should contain recognizable local app content. If the service returns JSON, verify a known endpoint such as `/health`.
-
-If curl fails with `Could not resolve host` (exit code 6), the system resolver cannot see the fresh subdomain yet — common behind fake-IP proxy DNS or right after tunnel creation. Retry with DNS-over-HTTPS:
-
-```bash
-curl --noproxy '*' --doh-url https://1.1.1.1/dns-query -sS -L --max-time 20 https://xxxx.trycloudflare.com
-```
-
-`python3 scripts/tunnel_helper.py verify --url ...` performs this fallback automatically. DNS propagation can take one or two minutes, so retry before treating the tunnel as broken.
-
-## Notes
-
-Quick Tunnel URLs are ephemeral. The URL changes when the process restarts, and it stops working when the machine sleeps, the network disconnects, or `cloudflared` exits.
+Official behavior:
+https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/
